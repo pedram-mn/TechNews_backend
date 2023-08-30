@@ -1,0 +1,71 @@
+version: "3.8"
+services:
+    app:
+        build: .
+        volumes:
+            - .:/technews
+        ports:
+            - "8000:8000"
+        image: app:technews
+        container_name: technews_container
+        command: sh -c "python manage.py test && python manage.py runserver 0.0.0.0:8000"
+        depends_on:
+            - redis
+
+#    selenium_hub:
+#        container_name: selenium_hub
+#        image: selenium/hub
+#        ports:
+#            - "4444:4444"
+
+#    selenium_chrome:
+#        image: selenium/standalone-chrome
+#        depends_on:
+#            - selenium_hub
+#        environment:
+#            - SE_EVENT_BUS_HOST=selenium-hub
+
+    HubService:
+        image: selenium/hub:latest
+        container_name: selenium_hub
+        ports:
+            - "4445:4444"
+            - "4442:4442"
+            - "4443:4443"
+
+    ChromeService:
+        image: selenium/node-chrome:latest
+        shm_size: "2gb"
+        ports:
+            - "5900"
+            - "7900"
+        environment:
+            - SE_EVENT_BUS_HOST=selenium_hub
+            - SE_EVENT_BUS_PUBLISH_PORT=4442
+            - SE_EVENT_BUS_SUBSCRIBE_PORT=4443
+        depends_on:
+            - HubService
+
+    celery:
+        build: .
+        command: celery -A TechNews_back.celery worker -l INFO --pool=solo
+        volumes:
+            - .:/technews
+        depends_on:
+            - ChromeService
+            - app
+            - redis
+
+    celery-beat:
+        build: .
+        command: celery -A TechNews_back.celery beat -l INFO
+        volumes:
+            - .:/technews
+        depends_on:
+            - ChromeService
+            - app
+            - redis
+
+    redis:
+        image: "redis:alpine"
+        command: redis-server
